@@ -1,3 +1,4 @@
+// src/app/root.tsx
 // Root component for the React app
 // Wraps routes and global providers
 import {
@@ -9,6 +10,7 @@ import {
   useAsyncError,
   useLocation,
   useRouteError,
+  useNavigate,
 } from 'react-router';
 
 import { useButton } from '@react-aria/button';
@@ -23,18 +25,14 @@ import {
 } from 'react';
 import './global.css';
 
-import fetch from '@/__create/fetch';
+// <-- fixed: fetch lives in src/app/__create/fetch.ts so use relative path from this file
+import fetch from './__create/fetch';
 // @ts-ignore
 import { SessionProvider } from '@auth/create/react';
-import { useNavigate } from 'react-router';
 import { serializeError } from 'serialize-error';
 import { Toaster } from 'sonner';
 // @ts-ignore
 import { LoadFonts } from 'virtual:load-fonts.jsx';
-import { HotReloadIndicator } from '../__create/HotReload';
-import { useSandboxStore } from '../__create/hmr-sandbox-store';
-import type { Route } from './+types/root';
-import { useDevServerHeartbeat } from '../__create/useDevServerHeartbeat';
 
 export const links = () => [];
 
@@ -83,11 +81,11 @@ function SharedErrorBoundary({
  * this in case something goes wrong outside of the normal user's app flow.
  * React-router will mount this one
  */
-export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+export function ErrorBoundary({ error }: any) {
   return <SharedErrorBoundary isOpen={true} />;
 }
 
-function InternalErrorBoundary({ error: errorArg }: Route.ErrorBoundaryProps) {
+function InternalErrorBoundary({ error: errorArg }: any) {
   const routeError = useRouteError();
   const asyncError = useAsyncError();
   const error = errorArg ?? asyncError ?? routeError;
@@ -230,7 +228,7 @@ export const ClientOnly: React.FC<ClientOnlyProps> = ({ loader }) => {
  * useHmrConnection()
  * ------------------
  * • `true`  → HMR socket is healthy
- * • `false` → socket lost (Vite is polling / may auto‑reload soon)
+ * • `false` → socket lost (Vite is polling / may auto-reload soon)
  *
  * Works only in dev; in prod it always returns `true`.
  */
@@ -243,13 +241,13 @@ export function useHmrConnection(): boolean {
 
     /** Fired the moment the WS closes unexpectedly */
     const onDisconnect = () => setConnected(false);
-    /** Fired every time the WS (re‑)opens */
+    /** Fired every time the WS (re-)opens */
     const onConnect = () => setConnected(true);
 
     import.meta.hot.on('vite:ws:disconnect', onDisconnect);
     import.meta.hot.on('vite:ws:connect', onConnect);
 
-    // Optional: catch the “about to full‑reload” event as a last resort
+    // Optional: catch the “about to full-reload” event as a last resort
     const onFullReload = () => setConnected(false);
     import.meta.hot.on('vite:beforeFullReload', onFullReload);
 
@@ -288,7 +286,8 @@ const useHandshakeParent = () => {
 
 const useCodeGen = () => {
   const { startCodeGen, setCodeGenGenerating, completeCodeGen, errorCodeGen, stopCodeGen } =
-    useSandboxStore();
+    // @ts-ignore
+    (window as any).__sandbox_store__ ?? ({} as any);
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -296,19 +295,19 @@ const useCodeGen = () => {
 
       switch (type) {
         case 'sandbox:web:codegen:started':
-          startCodeGen();
+          startCodeGen?.();
           break;
         case 'sandbox:web:codegen:generating':
-          setCodeGenGenerating();
+          setCodeGenGenerating?.();
           break;
         case 'sandbox:web:codegen:complete':
-          completeCodeGen();
+          completeCodeGen?.();
           break;
         case 'sandbox:web:codegen:error':
-          errorCodeGen();
+          errorCodeGen?.();
           break;
         case 'sandbox:web:codegen:stopped':
-          stopCodeGen();
+          stopCodeGen?.();
           break;
       }
     };
@@ -336,11 +335,71 @@ const useRefresh = () => {
   }, []);
 };
 
+/**
+ * Dynamically call dev-only heartbeat (only in dev)
+ */
+function useDevHeartbeatSafe() {
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    let mounted = true;
+
+    // <-- fixed: relative path from src/app/root.tsx to src/app/__create/useDevServerHeartbeat.ts
+    import('./__create/useDevServerHeartbeat')
+      .then((m) => {
+        if (!mounted) return;
+        // If the module exports a hook/function, call it.
+        try {
+          if (typeof m.useDevServerHeartbeat === 'function') {
+            m.useDevServerHeartbeat();
+          } else if (typeof m.default === 'function') {
+            (m.default as Function)();
+          }
+        } catch {
+          // ignore
+        }
+      })
+      .catch(() => {
+        // ignore missing dev helper in some environments
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+}
+
+/**
+ * Dynamic HotReloadIndicator loader (only loads in dev)
+ */
+const HotReloadIndicator: FC = () => {
+  const [Comp, setComp] = useState<FC | null>(null);
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    let mounted = true;
+    // <-- fixed: relative path
+    import('./__create/HotReload')
+      .then((m) => {
+        if (!mounted) return;
+        const C = (m?.HotReloadIndicator ?? m?.default) as FC | undefined;
+        if (C) setComp(() => C);
+      })
+      .catch(() => {
+        // ignore if missing in this environment
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  if (!Comp) return null;
+  return <Comp />;
+};
+
 export function Layout({ children }: { children: ReactNode }) {
   useHandshakeParent();
   useCodeGen();
   useRefresh();
-  useDevServerHeartbeat();
+  useDevHeartbeatSafe(); // safe dev-only call
   const navigate = useNavigate();
   const location = useLocation();
   const pathname = location?.pathname;

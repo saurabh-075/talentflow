@@ -1,9 +1,15 @@
-// React Router configuration
-// Defines navigation between Jobs, Candidates, and Assessments
-import type { Config } from '@react-router/dev/config';
+﻿import type { Config } from '@react-router/dev/config';
 
-export default {
-	appDirectory: './src/app',
-	ssr: true,
-	prerender: ['/*?'],
-} satisfies Config;
+/**
+ * Minimal React Router dev config.
+ * Ensure `build.prerender` is an array (empty while debugging).
+ */
+const config: Config = {
+  appDirectory: './src/app',
+  ssr: true,
+  build: {
+    prerender: []
+  }
+};
+
+export default config;
