@@ -16,7 +16,7 @@ import { restart } from './plugins/restart';
 import { restartEnvFileChange } from './plugins/restartEnvFileChange';
 
 export default defineConfig({
-  // Keep them available via import.meta.env.NEXT_PUBLIC_*
+ // Keep them available via import.meta.env.NEXT_PUBLIC_*
   envPrefix: 'NEXT_PUBLIC_',
   optimizeDeps: {
     // Explicitly include fast-glob, since it gets dynamically imported and we
@@ -32,6 +32,9 @@ export default defineConfig({
       'fsevents',
       'lightningcss',
     ],
+  },
+   build: {
+    target: 'esnext',
   },
   logLevel: 'info',
   plugins: [
